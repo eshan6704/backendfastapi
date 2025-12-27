@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Stock / Index Fetcher</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+html, body {
+    height: 100%;
+    margin: 0;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ===== Top Controls ===== */
+#controls {
+    padding: 10px;
+    border-bottom: 1px solid #ccc;
+    background: #fafafa;
+}
+
+#controls h3 {
+    margin: 0 0 8px 0;
+}
+
+.row-container {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+select, input, button {
+    padding: 6px;
+    font-size: 14px;
+}
+
+button {
+    cursor: pointer;
+}
+
+/* ===== FULL SCREEN RESPONSE AREA ===== */
+#response {
+    flex: 1;
+    width: 100%;
+    overflow: auto;
+    padding: 10px;
+    box-sizing: border-box;
+    background: #fff;
+}
+
+/* ===== STATUS BAR ===== */
+#status {
+    font-size: 11px;
+    color: #666;
+    font-family: monospace;
+    margin-bottom: 6px;
+}
+</style>
+</head>
+
+<body>
+
+<!-- ===== CONTROLS ===== -->
+<div id="controls">
+    <h3>Stock / Index Data Fetch</h3>
+
+    <div class="row-container">
+        <label>Mode</label>
+        <select id="mode">
+            <option value="stock">Stock</option>
+            <option value="index">Index</option>
+        </select>
+
+        <label>Request</label>
+        <select id="req_type"></select>
+
+        <label>Name</label>
+        <input id="name" placeholder="ITC / NIFTY 50">
+
+        <label>From</label>
+        <input id="date_start" placeholder="dd-mm-yyyy">
+
+        <label>To</label>
+        <input id="date_end" placeholder="dd-mm-yyyy">
+
+        <button onclick="fetchData()">Fetch</button>
+    </div>
+</div>
+
+<!-- ===== RESPONSE AREA ===== -->
+<div id="response">Waiting…</div>
+
+<script>
+/* ===== REQUEST LISTS ===== */
+const STOCK_REQ = [
+    "info","intraday","daily","nse_eq","qresult","result",
+    "balance","cashflow","dividend","split","other","stock_hist"
+];
+
+const INDEX_REQ = [
+    "indices","nse_open","nse_preopen","nse_fno","nse_fiidii",
+    "nse_events","nse_future","nse_bhav","nse_highlow","stock_highlow",
+    "index_history","nse_largedeals","nse_most_active",
+    "largedeals_historical","nse_bulkdeals","nse_blockdeals",
+    "index_pe_pb_div","index_total_returns"
+];
+
+/* ===== HELPERS ===== */
+function todayStr() {
+    const d = new Date();
+    return `${String(d.getDate()).padStart(2,"0")}-${String(d.getMonth()+1).padStart(2,"0")}-${d.getFullYear()}`;
+}
+
+/* ===== ELEMENTS ===== */
+const modeEl = document.getElementById("mode");
+const reqTypeEl = document.getElementById("req_type");
+const nameEl = document.getElementById("name");
+const dateStartEl = document.getElementById("date_start");
+const dateEndEl = document.getElementById("date_end");
+const responseEl = document.getElementById("response");
+
+/* ===== DEFAULT SETUP ===== */
+function setDefaults() {
+    reqTypeEl.innerHTML = "";
+    const list = modeEl.value === "stock" ? STOCK_REQ : INDEX_REQ;
+
+    list.forEach(v => {
+        const o = document.createElement("option");
+        o.value = v;
+        o.textContent = v;
+        reqTypeEl.appendChild(o);
+    });
+
+    nameEl.value = modeEl.value === "stock" ? "ITC" : "NIFTY 50";
+    dateStartEl.value = "01-01-2025";
+    dateEndEl.value = todayStr();
+}
+
+modeEl.addEventListener("change", setDefaults);
+setDefaults();
+
+/* ===== FETCH & RENDER WITH STATUS ===== */
+async function fetchData() {
+    responseEl.innerHTML = "Fetching…";
+
+    const payload = {
+        mode: modeEl.value,
+        req_type: reqTypeEl.value,
+        name: nameEl.value,
+        date_start: dateStartEl.value,
+        date_end: dateEndEl.value
+    };
+
+    const t0 = performance.now();
+
+    try {
+        const res = await fetch(
+            "https://eshan6704-backendfastapi.hf.space/api/fetch",
+            {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            }
+        );
+
+        const html = await res.text();
+
+        const elapsedMs = (performance.now() - t0).toFixed(1);
+        const sizeKb = (new Blob([html]).size / 1024).toFixed(2);
+
+        const statusHtml = `
+            <div id="status">
+                ⏱ ${elapsedMs} ms &nbsp; | &nbsp; 📦 ${sizeKb} KB
+            </div>
+        `;
+
+        responseEl.innerHTML = statusHtml + html;
+
+    } catch (err) {
+        responseEl.innerHTML = `<pre>Connection error: ${err}</pre>`;
+    }
+}
+</script>
+
+</body>
+</html>
