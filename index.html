@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Stock / Index Fetcher</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+html, body {
+    height: 100%;
+    margin: 0;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+}
+
+/* ===== Top Controls (larger inputs) ===== */
+#controls {
+    padding: 6px 12px;
+    border-bottom: 2px solid #e0e6ed;
+    background: rgba(255,255,255,0.95);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.row-container {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 4px;
+}
+
+.row-container label {
+    font-weight: 600;
+    color: #555;
+    font-size: 11px;
+    min-width: 24px;
+    text-align: right;
+    flex-shrink: 0;
+}
+
+.row-container select {
+    padding: 4px 6px;
+    font-size: 12px;
+    height: 24px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: white;
+    min-width: 70px;
+    flex-shrink: 0;
+}
+
+.row-container input {
+    padding: 4px 6px;
+    font-size: 12px;
+    height: 24px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: white;
+}
+
+#name, #date_start, #date_end {
+    width: 36px;
+}
+
+.row-container input:focus,
+.row-container select:focus {
+    outline: none;
+    border-color: #4f46e5;
+    box-shadow: 0 0 0 2px rgba(79,70,229,0.2);
+}
+
+.row-container button {
+    padding: 4px 12px;
+    font-size: 12px;
+    height: 24px;
+    border: none;
+    border-radius: 4px;
+    background: linear-gradient(135deg, #4f46e5, #7c3aed);
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+    min-width: 56px;
+    flex-shrink: 0;
+    margin-right: 6px;
+}
+
+button:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(79,70,229,0.4);
+}
+
+button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* ===== LARGER STATUS - RIGHT JUSTIFIED ===== */
+#status {
+    margin-left: auto;
+    flex-grow: 1;
+    font-size: 11px;
+    color: #666;
+    font-family: 'SF Mono', Monaco, Menlo, monospace;
+    padding: 4px 6px;
+    background: rgba(0,0,0,0.05);
+    border-radius: 4px;
+    white-space: nowrap;
+    text-align: right;
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 700px) {
+    .row-container {
+        flex-wrap: wrap;
+        gap: 3px;
+    }
+    
+    .row-container label {
+        min-width: 22px;
+        font-size: 10px;
+    }
+    
+    .row-container select {
+        min-width: 65px;
+        font-size: 11px;
+    }
+    
+    #name, #date_start, #date_end {
+        width: 32px;
+    }
+    
+    .row-container button {
+        min-width: 52px;
+        font-size: 11px;
+        margin-right: 4px;
+    }
+    
+    #status {
+        margin-left: 0;
+        margin-top: 4px;
+        flex-basis: 100%;
+        text-align: right;
+        font-size: 10px;
+        white-space: normal;
+        line-height: 1.3;
+        padding: 3px 6px;
+    }
+}
+
+/* ===== RESPONSE AREA ===== */
+#response {
+    flex: 1;
+    width: 100%;
+    overflow: auto;
+    padding: 12px;
+    box-sizing: border-box;
+    background: white;
+    margin: 4px;
+    border-radius: 6px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+}
+
+/* ===== Loading spinner ===== */
+.loading {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: #4f46e5;
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid #e5e7eb;
+    border-top: 2px solid #4f46e5;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+</style>
+</head>
+
+<body>
+
+<div id="controls">
+    <div class="row-container">
+        <label>Mode</label>
+        <select id="mode">
+            <option value="stock">Stock</option>
+            <option value="index">Index</option>
+            <option value="screener">Screener</option>
+        </select>
+
+        <label>Req</label>
+        <select id="req_type">
+            <option>Loading...</option>
+        </select>
+
+        <label>Name</label>
+        <input id="name" placeholder="ITC">
+
+        <label>From</label>
+        <input id="date_start" placeholder="01-12">
+
+        <label>To</label>
+        <input id="date_end" placeholder="28-12">
+
+        <button id="fetchBtn" onclick="fetchData()">Fetch</button>
+
+        <div id="status">initializing...</div>
+    </div>
+</div>
+
+<div id="response">Loading req_types from backend...</div>
+
+<script>
+/* ===== DYNAMIC REQ_TYPES FROM BACKEND ===== */
+let REQ_TYPES = { stock: [], index: [], screener: [] };
+
+/* ===== HELPERS ===== */
+function todayStr() {
+    const d = new Date();
+    return `${String(d.getDate()).padStart(2,"0")}-${String(d.getMonth()+1).padStart(2,"0")}-${d.getFullYear()}`;
+}
+
+function timeStr() {
+    const now = new Date();
+    return now.toLocaleTimeString('en-IN', { 
+        timeZone: 'Asia/Kolkata',
+        hour12: false,
+        hour: '2-digit', 
+        minute: '2-digit', 
+        second: '2-digit'
+    });
+}
+
+function formatSize(sizeKb) {
+    return sizeKb === '-' ? '-' : `${sizeKb}KB`;
+}
+
+function formatTime(rtMs) {
+    return rtMs === '-' ? '-' : `${rtMs}ms`;
+}
+
+function updateLastFetch(mode, name, req_type, date_start, date_end, size, rt, status) {
+    document.getElementById('status').textContent = 
+        `${timeStr()} | ${mode} | ${name} | ${req_type} | ${date_start} | ${date_end} | ${formatSize(size)} | ${formatTime(rt)} | ${status}`;
+}
+
+/* ===== ELEMENTS ===== */
+const els = {
+    mode: document.getElementById("mode"),
+    reqType: document.getElementById("req_type"),
+    name: document.getElementById("name"),
+    dateStart: document.getElementById("date_start"),
+    dateEnd: document.getElementById("date_end"),
+    response: document.getElementById("response")
+};
+
+/* ===== FETCH REQ_TYPES FROM BACKEND ===== */
+async function loadReqTypesFromBackend() {
+    try {
+        els.response.innerHTML = `
+            <div class="loading">
+                <div class="spinner"></div>
+                Loading req_types from backend...
+            </div>
+        `;
+        
+        // Try backend first
+        const res = await fetch("https://eshan6704-backendfastapi.hf.space/api/fetch", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mode: "list", req_type: "all", name: "", date_start: "", date_end: "" })
+        });
+        
+        const html = await res.text();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        
+        // Parse backend HTML (adjust selectors based on backend format)
+        REQ_TYPES.stock = Array.from(doc.querySelectorAll('.stock-req, [data-mode="stock"]')).map(el => 
+            el.textContent.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_')
+        ).filter(Boolean);
+        
+        REQ_TYPES.index = Array.from(doc.querySelectorAll('.index-req, [data-mode="index"]')).map(el => 
+            el.textContent.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_')
+        ).filter(Boolean);
+        
+        REQ_TYPES.screener = Array.from(doc.querySelectorAll('.screener-req, [data-mode="screener"]')).map(el => 
+            el.textContent.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_')
+        ).filter(Boolean);
+        
+        els.response.innerHTML = `✅ Backend req_types loaded!`;
+        
+    } catch (err) {
+        console.log('Backend req_types failed, using minimal fallback');
+        els.response.innerHTML = `⚠️ Using minimal fallback lists...`;
+    } finally {
+        // MINIMAL FALLBACK - always available
+        if (REQ_TYPES.stock.length === 0) REQ_TYPES.stock = ["info"];
+        if (REQ_TYPES.index.length === 0) REQ_TYPES.index = ["indices"];
+        if (REQ_TYPES.screener.length === 0) REQ_TYPES.screener = ["top_gainers"];
+        
+        setDefaults();
+        document.getElementById('status').textContent = 'ready';
+    }
+}
+
+/* ===== CENTRALIZED DEFAULTS ===== */
+function setDefaults() {
+    els.reqType.innerHTML = "";
+    
+    const mode = els.mode.value;
+    const list = REQ_TYPES[mode] || [];
+    
+    list.forEach(v => {
+        const o = document.createElement("option");
+        o.value = v;
+        o.textContent = v.replace(/_/g, ' ').toUpperCase();
+        els.reqType.appendChild(o);
+    });
+
+    if (mode === "stock") {
+        els.name.value = "ITC";
+        els.dateStart.value = "01-12";
+        els.dateEnd.value = todayStr().slice(0,5);
+    } else if (mode === "index") {
+        els.name.value = "NIFTY";
+        els.dateStart.value = "01-12";
+        els.dateEnd.value = todayStr().slice(0,5);
+    } else if (mode === "screener") {
+        els.name.value = '';
+        els.dateStart.value = '';
+        els.dateEnd.value = '';
+    }
+}
+
+els.mode.addEventListener("change", setDefaults);
+
+/* ===== FETCH (SAME FOR ALL MODES) ===== */
+async function fetchData() {
+    if (!els.reqType.value) {
+        alert('Please select a request type');
+        return;
+    }
+
+    const fetchBtn = document.getElementById('fetchBtn');
+    fetchBtn.disabled = true;
+    fetchBtn.textContent = '…';
+
+    els.response.innerHTML = `
+        <div class="loading">
+            <div class="spinner"></div>
+            Fetching ${els.name.value || els.reqType.value.replace(/_/g, ' ').toUpperCase()}...
+        </div>
+    `;
+
+    const payload = {
+        mode: els.mode.value,
+        req_type: els.reqType.value,
+        name: els.name.value.trim(),
+        date_start: els.dateStart.value,
+        date_end: els.dateEnd.value
+    };
+
+    const t0 = performance.now();
+
+    try {
+        const res = await fetch("https://eshan6704-backendfastapi.hf.space/api/fetch", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+
+        const html = await res.text();
+        const elapsedMs = (performance.now() - t0).toFixed(0);
+        const sizeKb = (new Blob([html]).size / 1024).toFixed(0);
+
+        updateLastFetch(
+            payload.mode, 
+            payload.name.toLowerCase() || payload.req_type,
+            payload.req_type, 
+            payload.date_start || '-',
+            payload.date_end || '-', 
+            sizeKb, 
+            elapsedMs, 
+            "OK"
+        );
+
+        els.response.innerHTML = html;
+
+    } catch (err) {
+        updateLastFetch(
+            payload.mode, 
+            (payload.name || payload.req_type).toLowerCase(), 
+            payload.req_type, 
+            payload.date_start || '-',
+            payload.date_end || '-', 
+            "-", 
+            "-", 
+            "ERROR"
+        );
+
+        els.response.innerHTML = `
+            <div style="color: #ef4444; padding: 20px; text-align: center;">
+                <h3>❌ Fetch failed</h3>
+                <pre>${err.message}</pre>
+                <p>Check your connection and try again.</p>
+            </div>
+        `;
+    } finally {
+        fetchBtn.disabled = false;
+        fetchBtn.textContent = 'Fetch';
+    }
+}
+
+/* ===== LOAD ON STARTUP ===== */
+document.addEventListener('DOMContentLoaded', loadReqTypesFromBackend);
+
+/* ===== Keyboard shortcuts ===== */
+document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.key === 'Enter') {
+        fetchData();
+    }
+});
+</script>
+
+</body>
+</html>
