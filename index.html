@@ -63,8 +63,9 @@ body {
     background: white;
 }
 
+/* ===== Wider fields for Name and Dates ===== */
 #name, #date_start, #date_end {
-    width: 72px;
+    width: 72px; /* 2x wider */
 }
 
 .row-container input:focus,
@@ -132,7 +133,7 @@ button:disabled {
     }
     
     #name, #date_start, #date_end {
-        width: 64px;
+        width: 64px; /* mobile width */
     }
     
     .row-container button {
@@ -211,10 +212,10 @@ button:disabled {
         <input id="name" placeholder="ITC">
 
         <label>From</label>
-        <input id="date_start" placeholder="01-12">
+        <input id="date_start" placeholder="01-04-2025">
 
         <label>To</label>
-        <input id="date_end" placeholder="28-12">
+        <input id="date_end" placeholder="30-12-2025">
 
         <button id="fetchBtn" onclick="fetchData()">Fetch</button>
 
@@ -232,6 +233,17 @@ let REQ_TYPES = { stock: [], index: [], screener: [] };
 function todayStr() {
     const d = new Date();
     return `${String(d.getDate()).padStart(2,"0")}-${String(d.getMonth()+1).padStart(2,"0")}-${d.getFullYear()}`;
+}
+
+function getFYStart() {
+    const now = new Date();
+    let fyYear;
+    if (now.getMonth() >= 3) { // April = 3
+        fyYear = now.getFullYear();
+    } else {
+        fyYear = now.getFullYear() - 1;
+    }
+    return `01-04-${fyYear}`;
 }
 
 function timeStr() {
@@ -278,7 +290,6 @@ async function loadReqTypesFromBackend() {
             </div>
         `;
         
-        // Try backend first
         const res = await fetch("https://eshan6704-backendfastapi.hf.space/api/fetch", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -289,7 +300,6 @@ async function loadReqTypesFromBackend() {
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
         
-        // Parse backend HTML (adjust selectors based on backend format)
         REQ_TYPES.stock = Array.from(doc.querySelectorAll('.stock-req, [data-mode="stock"]')).map(el => 
             el.textContent.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_')
         ).filter(Boolean);
@@ -308,7 +318,6 @@ async function loadReqTypesFromBackend() {
         console.log('Backend req_types failed, using minimal fallback');
         els.response.innerHTML = `⚠️ Using minimal fallback lists...`;
     } finally {
-        // MINIMAL FALLBACK - always available
         if (REQ_TYPES.stock.length === 0) REQ_TYPES.stock = ["info"];
         if (REQ_TYPES.index.length === 0) REQ_TYPES.index = ["indices"];
         if (REQ_TYPES.screener.length === 0) REQ_TYPES.screener = ["from-high"];
@@ -332,14 +341,15 @@ function setDefaults() {
         els.reqType.appendChild(o);
     });
 
+    const today = todayStr();
     if (mode === "stock") {
         els.name.value = "ITC";
-        els.dateStart.value = "01-12";
-        els.dateEnd.value = todayStr().slice(0,5);
+        els.dateStart.value = getFYStart();
+        els.dateEnd.value = today;
     } else if (mode === "index") {
         els.name.value = "NIFTY";
-        els.dateStart.value = "01-12";
-        els.dateEnd.value = todayStr().slice(0,5);
+        els.dateStart.value = getFYStart();
+        els.dateEnd.value = today;
     } else if (mode === "screener") {
         els.name.value = '';
         els.dateStart.value = '';
