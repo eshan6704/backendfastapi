@@ -311,7 +311,7 @@ async function loadReqTypesFromBackend() {
         // MINIMAL FALLBACK - always available
         if (REQ_TYPES.stock.length === 0) REQ_TYPES.stock = ["info"];
         if (REQ_TYPES.index.length === 0) REQ_TYPES.index = ["indices"];
-        if (REQ_TYPES.screener.length === 0) REQ_TYPES.screener = ["top_gainers"];
+        if (REQ_TYPES.screener.length === 0) REQ_TYPES.screener = ["from-high"];
         
         setDefaults();
         document.getElementById('status').textContent = 'ready';
