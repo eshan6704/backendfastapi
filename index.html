@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Stock / Index Fetcher</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- Plotly CDN -->
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
+<style>
+/* ===== General ===== */
+html, body { height:100%; margin:0; font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif; display:flex; flex-direction:column; background: linear-gradient(135deg,#f5f7fa 0%,#c3cfe2 100%); }
+
+/* ===== Top Controls ===== */
+#controls {
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    gap:6px;
+    padding:8px 12px;
+    border-bottom:2px solid #e0e6ed;
+    background: rgba(255,255,255,0.95);
+    backdrop-filter: blur(10px);
+    box-shadow:0 2px 10px rgba(0,0,0,0.1);
+}
+.row-container { display:flex; flex-wrap:wrap; gap:6px; align-items:center; width:100%; }
+.row-container label { font-weight:600; color:#555; font-size:12px; min-width:28px; text-align:right; }
+.row-container select, .row-container input { padding:6px 8px; font-size:13px; border:1px solid #ddd; border-radius:6px; min-width:70px; }
+.row-container input:focus, .row-container select:focus { outline:none; border-color:#4f46e5; box-shadow:0 0 0 2px rgba(79,70,229,0.2); }
+
+.row-container button { padding:6px 14px; font-size:13px; border:none; border-radius:6px; font-weight:600; cursor:pointer; min-width:60px; transition: all 0.2s; }
+#fetchBtn { background:linear-gradient(135deg,#4f46e5,#7c3aed); color:white; }
+#fetchBtn:hover:not(:disabled) { transform:translateY(-2px); box-shadow:0 5px 15px rgba(79,70,229,0.4); }
+#toggleViewBtn { background:linear-gradient(135deg,#10b981,#3b82f6); color:white; }
+#toggleViewBtn:hover:not(:disabled) { transform:translateY(-2px); box-shadow:0 5px 15px rgba(16,185,129,0.4); }
+button:disabled { opacity:0.6; cursor:not-allowed; transform:none; }
+
+/* ===== Status ===== */
+#status { margin-left:auto; font-size:12px; color:#444; font-family:'SF Mono',monospace; padding:4px 6px; background:rgba(0,0,0,0.05); border-radius:4px; white-space:nowrap; text-align:right; }
+
+/* ===== Response Areas ===== */
+#backendView, #frontendView { flex:1; width:100%; overflow:auto; padding:12px; box-sizing:border-box; background:white; margin:4px; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.08); }
+#frontendView { display:none; }
+.loading { display:inline-flex; align-items:center; gap:6px; color:#4f46e5; font-weight:500; font-size:14px; }
+.spinner { width:16px; height:16px; border:2px solid #e5e7eb; border-top:2px solid #4f46e5; border-radius:50%; animation:spin 1s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+.chart-container { width:100%; margin-bottom:12px; }
+
+/* ===== Table Styling ===== */
+table { border-collapse:collapse; width:100%; overflow-x:auto; }
+table th, table td { border:1px solid #ddd; padding:6px 8px; font-size:12px; text-align:center; }
+table th { background:#f3f4f6; }
+table tr:hover { background: #f0f9ff; }
+
+/* ===== Responsive ===== */
+@media(max-width:700px){
+    .row-container{flex-wrap:wrap;}
+    .row-container label{min-width:24px;font-size:11px;}
+    .row-container select, .row-container input{min-width:60px;font-size:12px;}
+    #status{font-size:11px;}
+}
+</style>
+</head>
+<body>
+
+<div id="controls">
+    <div class="row-container">
+        <label>Mode</label><select id="mode"><option value="stock">Stock</option><option value="index">Index</option><option value="screener">Screener</option></select>
+        <label>Req</label><select id="req_type"><option>Loading...</option></select>
+        <label>Name</label><input id="name" placeholder="ITC">
+        <label>From</label><input id="date_start" placeholder="01-04-2025">
+        <label>To</label><input id="date_end" placeholder="30-12-2025">
+        <button id="fetchBtn" onclick="fetchData()">Fetch</button>
+        <button id="toggleViewBtn" onclick="toggleView()">Show Frontend View</button>
+        <div id="status">initializing...</div>
+    </div>
+</div>
+
+<div id="backendView">Loading req_types from backend...</div>
+<div id="frontendView"></div>
+
+<script>
+const els={
+    mode:document.getElementById("mode"),
+    reqType:document.getElementById("req_type"),
+    name:document.getElementById("name"),
+    dateStart:document.getElementById("date_start"),
+    dateEnd:document.getElementById("date_end"),
+    backendView:document.getElementById("backendView"),
+    frontendView:document.getElementById("frontendView"),
+    toggleBtn:document.getElementById("toggleViewBtn")
+};
+let REQ_TYPES={stock:[],index:[],screener:[]}; 
+let currentView='backend';
+
+function toggleView(){
+    if(currentView==='backend'){
+        els.backendView.style.display='none';
+        els.frontendView.style.display='block';
+        els.toggleBtn.textContent='Show Backend View';
+        currentView='frontend';
+    }else{
+        els.backendView.style.display='block';
+        els.frontendView.style.display='none';
+        els.toggleBtn.textContent='Show Frontend View';
+        currentView='backend';
+    }
+}
+
+function todayStr(){const d=new Date();return `${String(d.getDate()).padStart(2,"0")}-${String(d.getMonth()+1).padStart(2,"0")}-${d.getFullYear()}`;}
+function getFYStart(){const now=new Date(); return now.getMonth()>=3?`01-04-${now.getFullYear()}`:`01-04-${now.getFullYear()-1}`;}
+function timeStr(){const now=new Date();return now.toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'});}
+function formatSize(s){return s==='-'?'-':`${s}KB`;}
+function formatTime(t){return t==='-'?'-':`${t}ms`;}
+function updateLastFetch(mode,name,req_type,start,end,size,rt,status){
+    document.getElementById('status').textContent=
+    `${timeStr()} | ${mode} | ${name} | ${req_type} | ${start} | ${end} | ${formatSize(size)} | ${formatTime(rt)} | ${status}`;
+}
+
+function setDefaults(){
+    els.reqType.innerHTML="";
+    const mode=els.mode.value; 
+    (REQ_TYPES[mode]||[]).forEach(v=>{
+        const o=document.createElement("option");
+        o.value=v;
+        o.textContent=v.replace(/_/g,' ').toUpperCase();
+        els.reqType.appendChild(o);
+    });
+    const today=todayStr();
+    if(mode==='stock'){els.name.value="ITC";els.dateStart.value=getFYStart();els.dateEnd.value=today;}
+    else if(mode==='index'){els.name.value="NIFTY";els.dateStart.value=getFYStart();els.dateEnd.value=today;}
+    else{els.name.value='';els.dateStart.value='';els.dateEnd.value='';}
+}
+els.mode.addEventListener("change",setDefaults);
+
+async function loadReqTypesFromBackend(){
+    try{
+        els.backendView.innerHTML=`<div class="loading"><div class="spinner"></div>Loading req_types...</div>`;
+        const res=await fetch("https://eshan6704-backendfastapi.hf.space/api/fetch",{
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({mode:"list",req_type:"all",name:"",date_start:"",date_end:""})
+        });
+        const html=await res.text();
+        const doc=new DOMParser().parseFromString(html,'text/html');
+        REQ_TYPES.stock=Array.from(doc.querySelectorAll('.stock-req,[data-mode="stock"]')).map(el=>el.textContent.trim().toLowerCase().replace(/[^a-z0-9_]/g,'_')).filter(Boolean);
+        REQ_TYPES.index=Array.from(doc.querySelectorAll('.index-req,[data-mode="index"]')).map(el=>el.textContent.trim().toLowerCase().replace(/[^a-z0-9_]/g,'_')).filter(Boolean);
+        REQ_TYPES.screener=Array.from(doc.querySelectorAll('.screener-req,[data-mode="screener"]')).map(el=>el.textContent.trim().toLowerCase().replace(/[^a-z0-9_]/g,'_')).filter(Boolean);
+    }catch(e){els.backendView.innerHTML=`⚠️ Using minimal fallback lists...`;}
+    finally{
+        if(REQ_TYPES.stock.length===0) REQ_TYPES.stock=["info"];
+        if(REQ_TYPES.index.length===0) REQ_TYPES.index=["indices"];
+        if(REQ_TYPES.screener.length===0) REQ_TYPES.screener=["from-high"];
+        setDefaults(); 
+        els.backendView.innerHTML=`✅ Backend req_types loaded!`; 
+    }
+}
+
+async function fetchData(){
+    if(!els.reqType.value){alert('Select request type');return;}
+    const fetchBtn=document.getElementById("fetchBtn"); fetchBtn.disabled=true; fetchBtn.textContent='…';
+    els.backendView.innerHTML=`<div class="loading"><div class="spinner"></div>Fetching...</div>`; 
+    els.frontendView.innerHTML='';
+    const payload={mode:els.mode.value,req_type:els.reqType.value,name:els.name.value.trim(),date_start:els.dateStart.value,date_end:els.dateEnd.value};
+    const t0=performance.now();
+    try{
+        const res=await fetch("https://eshan6704-backendfastapi.hf.space/api/fetch",{
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify(payload)
+        });
+        const text=await res.text();
+        const elapsedMs=(performance.now()-t0).toFixed(0);
+        const sizeKb=(new Blob([text]).size/1024).toFixed(0);
+        updateLastFetch(payload.mode,payload.name.toLowerCase()||payload.req_type,payload.req_type,payload.date_start||'-',payload.date_end||'-',sizeKb,elapsedMs,"OK");
+
+        els.backendView.innerHTML=text;
+
+        // Frontend chart + raw table
+        const parser=new DOMParser(); 
+        const doc=parser.parseFromString(text,'text/html'); 
+        const table=doc.querySelector('table'); 
+        els.frontendView.innerHTML='';
+
+        if(table && payload.mode==='stock' && payload.req_type==='daily'){
+            const rows = Array.from(table.querySelectorAll('tr')).slice(1).map(r=>{
+                const c = r.querySelectorAll('td');
+                return {date:c[0].textContent, open:+c[1].textContent, high:+c[2].textContent, low:+c[3].textContent, close:+c[4].textContent};
+            });
+            const trace = {
+                x: rows.map(r=>r.date),
+                open: rows.map(r=>r.open),
+                high: rows.map(r=>r.high),
+                low: rows.map(r=>r.low),
+                close: rows.map(r=>r.close),
+                type: 'candlestick',
+                name: payload.name
+            };
+
+            const chartDiv = document.createElement('div');
+            chartDiv.className = 'chart-container';
+            chartDiv.style.width = '100%';      // full width
+            chartDiv.style.maxWidth = '1200px'; // optional max width
+            chartDiv.style.height = '500px';    // height
+            els.frontendView.appendChild(chartDiv);
+
+            Plotly.newPlot(chartDiv, [trace], {
+                margin: { t: 30 },
+                autosize: true
+            });
+
+            // Make chart responsive
+            window.addEventListener('resize', () => { Plotly.Plots.resize(chartDiv); });
+        }
+
+        if(table) els.frontendView.appendChild(table);
+
+    }catch(err){
+        updateLastFetch(payload.mode,(payload.name||payload.req_type).toLowerCase(),payload.req_type,payload.date_start||'-',payload.date_end||'-',"-","-","ERROR");
+        els.backendView.innerHTML=`<div style="color:#ef4444;padding:20px;text-align:center;"><h3>❌ Fetch failed</h3><pre>${err.message}</pre></div>`;
+    }finally{fetchBtn.disabled=false; fetchBtn.textContent='Fetch';}
+}
+
+document.addEventListener('DOMContentLoaded',loadReqTypesFromBackend);
+document.addEventListener('keydown',e=>{if(e.ctrlKey && e.key==='Enter') fetchData();});
+</script>
+
+</body>
+</html>
